@@ -1,58 +1,33 @@
-# evaluate, predict (alias para evaluate), gradient
+# evaluate (for evolutionary algorithm) and callable (for ease of use) methods
 
-# TODO: tratamento numérico, se feito, deve ser aqui no evaluate
+
+# Evaluation should take a list of samples (matrix X)
+
 function evaluate(it::IT, X::Array{T, 2}) where {T<:Number}
     it.outer_c * it.g.(it.inner_c * vec(prod(X .^ it.k', dims=2)) )
 end
+
 
 function evaluate(itexpr::ITexpr, X::Array{T, 2}) where {T<:Number}
     mapfoldl(it -> evaluate(it, X), .+, itexpr.ITs) .+ itexpr.intercept
 end
 
 
-# Providenciando facilidade para quando o usuário passa só 1 input. Recebe qualquer
-# array e possivelmente manda um erro na hora da chamada da função que recebe uma
-# matriz
-evaluate(it::IT, X::Array{Any, 1}) = evaluate(it, reshape(X, (size(X)...,1)))
-evaluate(itexpr::ITexpr, X::Array{Any, 1}) = evaluate(itexpr, reshape(X, (size(X)...,1)))
+# if a single sample is given, then we reshape it and use the correct method
 
-
-# Predict é um alias para evaluate
-const predict = evaluate
-
-
-function gradient(it::IT, X::Array{T, 2}) where {T<:Number}
-
-    nsamples, nvars = size(X)
-
-    gradients = zeros(size(X))
-
-    # Interação sem considerar a regra do expoente da derivada
-    p_eval = vec(prod(X .^ it.k', dims=2))
-
-    for i in 1:nvars
-        power_rule = copy(it.k)
-        power_rule[i] -= 1
-
-        p_partial_eval = it.k[i] * vec(prod(X .^ power_rule', dims=2))
-
-        # obtendo a derivada da função de transformação
-        g = x -> derivative(it.g, x)
-        
-        # Regra do expoente e da cadeia
-        gradients[:, i] = it.outer_c * g.(it.inner_c * p_eval) .* (it.inner_c * p_partial_eval)
-    end
-
-    gradients
+function evaluate(it::IT, X::Array{T, 1}) where {T<:Number}
+    evaluate(it, reshape(X, (size(X)...,1)))
 end
 
 
-function gradient(itexpr::ITexpr, X::Array{T, 2}) where {T<:Number}
-    mapfoldl(it -> gradient(it, X), .+, itexpr.ITs) .+ itexpr.intercept
+function evaluate(itexpr::ITexpr, X::Array{T, 1}) where {T<:Number}
+    evaluate(itexpr, reshape(X, (size(X)...,1)))
 end
 
 
-gradient(it::IT, X::Array{Any, 1}) = gradient(it, reshape(X, (size(X)...,1)))
-gradient(itexpr::ITexpr, X::Array{Any, 1}) = gradient(itexpr, reshape(X, (size(X)...,1)))
+# The predict method provides an easier way of predicting new values
+# without having to pass the expressions
 
-# TODO: implementar mais coisas que recebem 1 ou 2 argumentos se fizer sentido
+(it::IT)(X) = evaluate(it, X)
+
+(itexpr::ITexpr)(X) = evaluate(itexpr, X)

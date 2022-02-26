@@ -1,11 +1,13 @@
+# Interaction-Transformation structs for representing mathematical expressions
+# as the linear combination of IT terms.
 
 
 """
-outer_c * g( inner_c * interaction(k) )
+IT(x) = outer_c * g( inner_c * interaction(x, k) )
 """
 struct IT
     g :: Function
-    k :: Array{Float64, 1} # must be floats to use the exponent function with negative powers
+    k :: Array{Float64, 1} # have to be float to use ^ with negative strengths
 
     inner_c :: Float64
     outer_c :: Float64
@@ -14,21 +16,65 @@ struct IT
     IT(g, k, inner_c, outer_c) = new(g, k, inner_c, outer_c)
 end
 
-# TODO: fazer itexpr e it terem mais informações (nvar, size)
+
+"""
+ITexpr(x) = IT_1(x) + IT_2(x) + ... + intercept
+"""
 struct ITexpr
     ITs       :: Array{IT, 1}
     intercept :: Float64
 
-    # TODO: ter nterms e substituir todo uso de size no código todo
+    nterms    :: Int32 # TODO: Usar nterms e nvars no código
+    nvars     :: Int32 
 
-    ITexpr(ITs) = new(ITs, 0.0)
-    ITexpr(ITs, intercept) = new(ITs, intercept)
+    ITexpr(ITs, intercept=0.0) = begin
+        # Lista de ITs é criada (ao menos pelas funções internas da biblioteca)
+        # de forma que nunda existe termos triviais (mas pode ter repetido,
+        # por isso usamos o rle). Ordenamos com base nos métodos de hash e 
+        # comparação para poder usar memoization.
+        unique_its, n_occurences = rle(sort(ITs))
+
+        new(unique_its, intercept, length(unique_its), length(ITs[1].k))
+    end
 end
 
 
+# Creating hashs for IT structs so ITExprs can be ordered and memoized. 
+# Base.hash creates a hash representation of expressions, and (==) and isless
+# are used in sorting methods. When creating ITexprs, you need to sort
+# the ITs list to help memoization to identify similar expressions. Hashing
+# and sorting does not consider the values of the coefficients or intercept.
+# None of those methods are exported.
+
+str_rep(T) = String(Symbol(T))
+
+function Base.hash(it::IT, h::UInt)::UInt
+    hash(it.k, hash(String(Symbol(it.g)), hash(:IT, h)))
+end
+
+function Base.:(==)(it1::IT, it2::IT)
+    isequal(it1.k, it2.k) && isequal(str_rep(it1.g), str_rep(it2.g))
+end
+
+function Base.isless(it1::IT, it2::IT) 
+    isless(str_rep(it1.g), str_rep(it2.g)) || isless(it1.k, it2.k)
+end
+
+function Base.hash(itexpr::ITexpr, h::UInt)
+    hash(itexpr.ITs, hash(itexpr.nterms, hash(:ITexpr, h)))
+end
+
+function Base.:(==)(itexpr1::ITexpr, itexpr2::ITexpr) 
+    isequal(itexpr1.ITs, itexpr2.ITs) && isequal(itexpr1.nterms, itexpr2.nterms)
+end
+
+
+"""
+Alias for a list of ITexprs to match this type of list as a population
+"""
 struct ITpop
     ITexprs :: Array{ITexpr, 1}
-    size::Int64 # TODO: renomear para length? popsize?
+    size::Int64  #TODO: renomear para length?
 
     ITpop(ITexprs) = new(ITexprs, size(ITexprs, 1))
 end
