@@ -7,13 +7,15 @@ IT(x) = outer_c * g( inner_c * interaction(x, k) )
 """
 struct IT
     g :: Function
-    k :: Array{Float64, 1} # have to be float to use ^ with negative strengths
+    k :: Array{Float64, 1} # have to be float to use ^ with negative strengths.
 
-    inner_c :: Float64
-    outer_c :: Float64
+    w :: Float64 # outer scale coefficient
+    b :: Float64 # inner offset
+    c :: Float64 # inner scale coefficient
 
-    IT(g, k) = new(g, k, 1.0, 1.0)
-    IT(g, k, inner_c, outer_c) = new(g, k, inner_c, outer_c)
+    # Default values are the neutral elements for the + and * operations
+    IT(g, k) = new(g, k, 1.0, 0.0, 1.0)
+    IT(g, k, w, b, c) = new(g, k, w, b, c)
 end
 
 

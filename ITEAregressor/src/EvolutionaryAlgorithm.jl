@@ -10,7 +10,7 @@ function _init_population(
         n_terms = rand(min_terms:max_terms)
         
         gs = rand(transf_funcs, n_terms)
-        ks = zeros(n_terms, nvars)
+        ks = zeros(n_terms, nvars) # we need to create ks as floats
 
         for i in 1:n_terms
             # Selecting exponents that will be != 0, with at least 1 
@@ -147,7 +147,6 @@ function _mutate_population(
     end)
 end
 
-
 function ITEA(
     # Obrigatory arguments
     X::Array{T, 2},
@@ -172,7 +171,7 @@ function ITEA(
 
     # Execution behavior
     verbose::Int = 1,
-    threaded_execution::Bool=true) where {T<:Real}
+    threaded_execution::Bool=true) where {T<:Number}
     
     # Documentar: o que é paralelizado e memorizado: fitness e coeficientes.
     # deve iniciar julia com mais threads para usar isso de maneira efetiva
@@ -229,16 +228,16 @@ function ITEA(
         end
 
         @printf("\n+------+-----------+-----------+------------+----------+\n")
-        @printf(  "|  Gen |  Best Fit |  Med Fit  | Smlst Size | Med Size |\n")
+        @printf(  "|  Gen |  Best Fit |  Avg Fit  | Smlst Size | Avg Size |\n")
         @printf(  "+------+-----------+-----------+------------+----------+\n")
     end
 
     for g in 1:gens
         if verbose>0 && mod(g, verbose) == 0
             sizes = [count_nodes(p) for p in pop.ITexprs]
-            avg_fitness = min(median(fitnesses), 9.999e+99)
+            avg_fitness = min(mean(fitnesses), 9.999e+99)
             @printf("| %4d | %.3e | %.3e | %10d | %8.3f |\n",
-                g, minimum(fitnesses), avg_fitness, minimum(sizes), median(sizes))
+                g, minimum(fitnesses), avg_fitness, minimum(sizes), mean(sizes))
         end
 
         xmen = _mutate_population(

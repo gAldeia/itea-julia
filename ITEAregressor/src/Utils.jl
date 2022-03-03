@@ -1,17 +1,19 @@
 function Base.show(io::IO, it::IT)
     println("$(size(it.k, 1))-element IT term:")
-    println(" g       : $(it.g)")
-    println(" k       : $(it.k)")
-    println(" inner_c : $(it.inner_c)")
-    println(" outer_c : $(it.outer_c)")
+    println(" g (transformation function) : $(it.g)")
+    println(" k (strengths vector)        : $(it.k)")
+    println(" w (outer scale coefficient) : $(it.w)")
+    println(" b (inner offset)            : $(it.b)")
+    println(" c (inner scale coefficient) : $(it.c)")
 end
 
 
 function Base.show(io::IO, itexpr::ITexpr)
     println("$(size(itexpr.ITs, 1))-element IT expression:")
     map(itexpr.ITs) do it
-        println(" $(round(it.outer_c, digits=3)) * $(it.g)",
-                "( $(round(it.inner_c, digits=3)) * p(X, $(it.k)) )")    
+        println(
+            " $(round(it.w, digits=3)) * $(it.g)",
+            "( $(round(it.b, digits=3)) + $(round(it.c, digits=3)) * p(X, $(it.k)) )")    
     end
     println(" $(itexpr.intercept)")
 end
@@ -22,8 +24,9 @@ function Base.show(io::IO, itpop::ITpop)
     map(itpop.ITexprs) do itexpr
         println(" $(size(itexpr.ITs, 1))-element IT expression:")
         map(itexpr.ITs) do it
-            println("  $(round(it.outer_c, digits=3)) * $(it.g)",
-                    "( $(round(it.inner_c, digits=3)) * p(X, $(it.k)) )")    
+            println(
+                "  $(round(it.w, digits=3)) * $(it.g)",
+                "( $(round(it.b, digits=3)) + $(round(it.c, digits=3)) * p(X, $(it.k)) )")    
         end
         println("  $(itexpr.intercept)")
     end
@@ -32,15 +35,17 @@ end
 
 function to_str(it::IT; digits::Int=5, labels::Array{String,1}=String[])
 
-    outer_c = round(it.outer_c, digits=digits)
-    inner_c = round(it.inner_c, digits=digits)
+    # TODO: to str ignorar quando temos expoente zero
+    w = round(it.w, digits=digits)
+    c = round(it.c, digits=digits)
+    b = round(it.b, digits=digits)
     
     interaction = join(map(1:length(it.k)) do i
         var_name = length(labels) >= i ? labels[i] : "x_$(i)"
         "$(var_name)^$(it.k[i])"
     end, " * ")
 
-    "$(outer_c) * $(it.g)($(inner_c) * $(interaction))"
+    "$(w)*$(it.g)( $(b)+$(c)*($(interaction)) )"
 end
 
 
@@ -56,13 +61,21 @@ end
 
 function count_nodes(it::IT)
 
-    interaction = sum(map(it.k) do k
-        k== 0 ? 0 : 3 # 3 nodes (x ^ k) for each non-zero exponent
-    end)
-
-    # 2 nodes for each coefficient: the coeff itself and its multiplication op.
-    # 1 node for the transformation function
-    return 5 + interaction
+    if it.w != 0.0
+        2 + if it.b != 0 # w * ...
+            3 # g(b + ...)
+        else
+            1 #g(...)
+        end + if it.c != 0
+            2 + sum(map(it.k) do k
+                k== 0 ? 0 : 3 # 3 nodes (x ^ k) for each non-zero exponent
+            end)
+        else
+            0
+        end
+    else
+        0
+    end
 end
 
 

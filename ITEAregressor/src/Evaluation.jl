@@ -4,7 +4,7 @@
 # Evaluation should take a list of samples (matrix X)
 
 function evaluate(it::IT, X::Array{T, 2}) where {T<:Number}
-    it.outer_c * it.g.(it.inner_c * vec(prod(X .^ it.k', dims=2)) )
+    it.w * it.g.(it.b .+ it.c * vec(prod(X .^ it.k', dims=2)) )
 end
 
 

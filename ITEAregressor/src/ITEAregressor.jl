@@ -2,7 +2,7 @@ __precompile__()
 
 module ITEAregressor
 
-const ITEA_CACHE_SIZE = 10000
+const ITEA_CACHE_SIZE = 3000
 
 # TODO: usar mais símbolos e nomes significativos e curtos
 # TODO: colocar o tipo de retorno em cada função
@@ -26,6 +26,7 @@ using LinearAlgebra: pinv, LAPACKException, SingularException
 using ForwardDiff: derivative
 using LsqFit: curve_fit
 using StatsBase: sample, ProbabilityWeights, randperm, rle
+using Distributions: Uniform
 
 using Printf # verbose 
 

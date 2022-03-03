@@ -1,3 +1,24 @@
+function _get_p0(itexpr::ITexpr; fit_intercept=true)
+
+    p0 = if fit_intercept
+        zeros(3*size(itexpr.ITs, 1)+1) # Starting point
+    else
+        zeros(3*size(itexpr.ITs, 1))
+    end
+
+    if fit_intercept
+        p0[end] = itexpr.intercept
+    end
+
+    # setting p0 to zero for the b offset coefficients
+    for i in 1:length(itexpr.ITs)
+        it = itexpr.ITs[i]
+        p0[3i-2:3i] .= it.w, it.b, it.c
+    end
+
+    p0
+end
+
 """Function that takes an itexpr and creates a two argument model and jacobian.
 
 The model, that was previously a single parameter function model(X), is now
@@ -7,7 +28,7 @@ The jacobian is also a two parameter function jacobian(X, theta), which will
 return the jacobian function of the model w.r.t. the theta parameters.
 
 Theta should be an array with the coefficients:
-    inner1, outer1, inner2, outer2, ..., intercept
+    w1, b1, c1, w2, b2, c2, ..., intercept
     (if fit_intercept is false, then it is not included in theta vector)
 """
 function _create_model_and_jacobian(itexpr::ITexpr; fit_intercept=true)
@@ -16,9 +37,10 @@ function _create_model_and_jacobian(itexpr::ITexpr; fit_intercept=true)
         pred = zeros(size(X, 1))
 
         for i in 1:length(itexpr.ITs)
-            it = itexpr.ITs[i]
+            w, b, c = theta[3i-2:3i]
+            g, k = itexpr.ITs[i].g, itexpr.ITs[i].k
             
-            pred[:] .+= theta[2i-1] * it.g.( vec(theta[2i] * prod(X .^ it.k', dims=2)) )
+            pred[:] .+= w * g.(b .+ vec(c * prod(X .^ k', dims=2)) )
         end
 
         fit_intercept ? pred .+ theta[end] : pred
@@ -31,39 +53,34 @@ function _create_model_and_jacobian(itexpr::ITexpr; fit_intercept=true)
         # Cada coluna é a derivada em função de um dos parâmetros de theta
         J = if fit_intercept
             # last column represents the derivative w.r.t. intercept
-            ones(size(X, 1), 2*size(itexpr.ITs, 1)+1)
+            ones(size(X, 1), 3*size(itexpr.ITs, 1)+1)
         else
-            ones(size(X, 1), 2*size(itexpr.ITs, 1))
+            ones(size(X, 1), 3*size(itexpr.ITs, 1))
         end
 
         for i in 1:size(itexpr.ITs, 1)
-            inner_c, outer_c = theta[2i], theta[2i-1]
-
+            w, b, c = theta[3i-2:3i]
             g, k = itexpr.ITs[i].g, itexpr.ITs[i].k
 
             p_eval = vec(prod(X .^ k', dims=2))
 
-            J[:, 2i]   = outer_c * gprimes[g].(inner_c * p_eval) .* p_eval
-            J[:, 2i-1] = g.(inner_c * p_eval)
+            # Partial derivatives w.r.t. w, b and c.
+            J[:, 3i-2] = g.(b .+ c * p_eval)
+            J[:, 3i-1] = w * gprimes[g].(b .+ c * p_eval)
+            J[:, 3i]   = w .* p_eval .* gprimes[g].(b .+ c * p_eval)
         end
         
         J
     end
 
-    p0 = if fit_intercept
-        ones(2*size(itexpr.ITs, 1)+1) # Starting point
-    else
-        ones(2*size(itexpr.ITs, 1))
-    end
-
-    return model, jacobian, p0
+    return model, jacobian, _get_p0(itexpr, fit_intercept=fit_intercept)
 end
 
 
 """
-se a itexpr tem n termos, então theta deve ter 2n + 1 elementos 
+se a itexpr tem n termos, então theta deve ter 3n + 1 elementos 
 (um inner e outer para cada termo + intercepto, na ordem)
-inner1, outer1, inner2, outer2, ..., intercept
+w1, b1, c1, w2, b2, c2, ..., intercept
 """
 function _replace_parameters(
     itexpr::ITexpr, theta::Array{Float64, 1};
@@ -73,8 +90,7 @@ function _replace_parameters(
         g = itexpr.ITs[i].g
         k = itexpr.ITs[i].k
 
-        # Construtor: IT(g, k, inner_c, outer_c)
-        IT(g, k, theta[2i], theta[2i-1])
+        IT(g, k, theta[3i-2], theta[3i-1], theta[3i])
     end
 
     fit_intercept ? ITexpr(ITs, theta[end]) : ITexpr(ITs)
@@ -91,6 +107,7 @@ function ordinary_least_squares_adj(
     fit_intercept=true) where {T<:Number}
 
     nsamples, nvars = size(X)
+    p0 = _get_p0(itexpr, fit_intercept=fit_intercept)
 
     try
         # ones no final para ser a coluna do fit intercepto
@@ -103,22 +120,20 @@ function ordinary_least_squares_adj(
         # vec transforma (se já não for) em vetor coluna
         beta = pinv(Xhat' * Xhat) * Xhat' * vec(y)
 
-        theta = ones( 2*size(itexpr.ITs, 1) + (fit_intercept ? 1 : 0) )
-
         for i in 1:size(itexpr.ITs, 1)
             
-            theta[2i-1] = beta[i] # getting the outer coefficients
+            p0[3i-2] = beta[i] # setting outer scale coeff
         end
 
         # Dealing with the intercept
         if fit_intercept 
-            theta[end] = beta[end]
+            p0[end] = beta[end]
         end
 
-        return _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+        return p0 #_replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
     catch err 
         if isa(err, DomainError) || isa(err, LAPACKException)
-            return itexpr
+            p0
         else
             rethrow(err)
         end
@@ -130,6 +145,19 @@ function levenberg_marquardt_adj(
     itexpr::ITexpr, X::Array{T, 2}, y::Array{T, 1};
     maxIter=10, fit_intercept=true) where {T<:Number}
 
+    # Teste - OLS + LM ---------------------------------------------------------
+    theta = ordinary_least_squares_adj(itexpr, X, y, fit_intercept=true)
+
+    # Criando valores aleatórios para os outros coeficientes não ajustados
+    p0 = rand(Uniform(-1, 1), 3*length(itexpr.ITs))
+    for i in 1:length(itexpr.ITs)
+        theta[3i-1:3i] .= p0[3i-1:3i]
+    end
+    
+    # Atualizando com OLS
+    itexpr = _replace_parameters(itexpr, theta, fit_intercept=true)
+    # ----- (daqui pra baixo volta ao método original) -------------------------
+
     model, jacobian, p0 = _create_model_and_jacobian(itexpr, fit_intercept=fit_intercept)
 
     try
@@ -137,10 +165,10 @@ function levenberg_marquardt_adj(
 
         theta = fit.param
         
-        return _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+        return theta #_replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
     catch err
         if isa(err, DomainError) || isa(err, SingularException)
-            return itexpr
+            return p0
         else
             rethrow(err)
         end
@@ -195,24 +223,44 @@ function gradient_descent_adj(
         end
     end
 
-    return _replace_parameters(itexpr, p0, fit_intercept=fit_intercept)
+    return p0 #_replace_parameters(itexpr, p0, fit_intercept=fit_intercept)
 end
 
 
 # Métodos para usar (o resto não deve ser usado diretamente ) -----------------
-const _adj_memoization = LRU{ITexpr, ITexpr}(maxsize = ITEA_CACHE_SIZE)
+const _adj_memoization = LRU{UInt64, Array{Float64, 1}}(maxsize = ITEA_CACHE_SIZE)
 
 
 function free_params_adj(itexpr, X, y;
     method::Union{String, Nothing}="gradient_descent_adj", fit_intercept=true)
 
+    # Removendo termos que dão nan/inf
+    remove = zeros(length(itexpr.ITs))
+    for i in 1:length(itexpr.ITs)
+        try
+            evaluate(itexpr.ITs[i], X)
+        catch err
+            if isa(err, DomainError)
+                remove[i] = 1.0
+            else
+                rethrow(err)
+            end
+        end
+    end
+    if all(remove .> 0)
+        remove[rand(1:length(remove))] = 0.0
+    end
+    itexpr = ITexpr(itexpr.ITs[remove .== 0])
+
     if typeof(method) == Nothing # type of nothing is Nothing
         return itexpr
     else
-        get!(_adj_memoization, itexpr) do
+        theta = get!(_adj_memoization, hash(itexpr)) do
 
             eval(Symbol(method))(itexpr, X, y, fit_intercept=fit_intercept)
         end
+
+        _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
     end
 end
 
