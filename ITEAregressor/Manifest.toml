@@ -269,6 +269,12 @@ git-tree-sha1 = "d64a0aff6691612ab9fb0117b0995270871c5dfc"
 uuid = "8ac3fa9e-de4c-5943-b1dc-09c6b5f20637"
 version = "1.3.0"
 
+[[deps.LeastSquaresOptim]]
+deps = ["FiniteDiff", "ForwardDiff", "LinearAlgebra", "Optim", "Printf", "SparseArrays", "Statistics", "SuiteSparse"]
+git-tree-sha1 = "06ea4a7c438f434dc0dc8d03c72e61ee0bf3629d"
+uuid = "0fc2ff8b-aaa3-5acd-a817-1944a5e08891"
+version = "0.8.3"
+
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
@@ -287,6 +293,12 @@ uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
 
 [[deps.Libdl]]
 uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+
+[[deps.LineSearches]]
+deps = ["LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "Printf"]
+git-tree-sha1 = "f27132e551e959b3667d8c93eae90973225032dd"
+uuid = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
+version = "7.1.1"
 
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "libblastrampoline_jll"]
@@ -378,6 +390,12 @@ git-tree-sha1 = "13652491f6856acfd2db29360e1bbcd4565d04f1"
 uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.5+0"
 
+[[deps.Optim]]
+deps = ["Compat", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
+git-tree-sha1 = "bc0a748740e8bc5eeb9ea6031e6f050de1fc0ba2"
+uuid = "429524aa-4258-5aef-a3af-852621145aeb"
+version = "1.6.2"
+
 [[deps.OptimBase]]
 deps = ["NLSolversBase", "Printf", "Reexport"]
 git-tree-sha1 = "9cb1fee807b599b5f803809e85c81b582d2009d6"
@@ -395,9 +413,21 @@ git-tree-sha1 = "ee26b350276c51697c9c2d88a072b339f9f03d73"
 uuid = "90014a1f-27ba-587c-ab20-58faa44d9150"
 version = "0.11.5"
 
+[[deps.Parameters]]
+deps = ["OrderedCollections", "UnPack"]
+git-tree-sha1 = "34c0e9ad262e5f7fc75b10a9952ca7692cfc5fbe"
+uuid = "d96e819e-fc66-5662-9728-84c9c7592b0a"
+version = "0.12.3"
+
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+
+[[deps.PositiveFactorizations]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "17275485f373e6673f7e7f97051f703ed5b15b20"
+uuid = "85a6dd25-e78a-55b7-8502-1745935b8125"
+version = "0.2.4"
 
 [[deps.Preferences]]
 deps = ["TOML"]

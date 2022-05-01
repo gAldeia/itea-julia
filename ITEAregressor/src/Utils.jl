@@ -8,6 +8,8 @@ function Base.show(io::IO, it::IT)
 end
 
 
+# TODO: fazer um parser para pegar string e criar expr
+
 function Base.show(io::IO, itexpr::ITexpr)
     println("$(size(itexpr.ITs, 1))-element IT expression:")
     map(itexpr.ITs) do it
@@ -19,18 +21,18 @@ function Base.show(io::IO, itexpr::ITexpr)
 end
 
 
-function Base.show(io::IO, itpop::ITpop)
-    println("$(itpop.size)-element IT population:")
-    map(itpop.ITexprs) do itexpr
-        println(" $(size(itexpr.ITs, 1))-element IT expression:")
-        map(itexpr.ITs) do it
-            println(
-                "  $(round(it.w, digits=3)) * $(it.g)",
-                "( $(round(it.b, digits=3)) + $(round(it.c, digits=3)) * p(X, $(it.k)) )")    
-        end
-        println("  $(itexpr.intercept)")
-    end
-end
+# function Base.show(io::IO, itpop::ITpop)
+#     println("$(itpop.size)-element IT population:")
+#     map(itpop.ITexprs) do itexpr
+#         println(" $(size(itexpr.ITs, 1))-element IT expression:")
+#         map(itexpr.ITs) do it
+#             println(
+#                 "  $(round(it.w, digits=3)) * $(it.g)",
+#                 "( $(round(it.b, digits=3)) + $(round(it.c, digits=3)) * p(X, $(it.k)) )")    
+#         end
+#         println("  $(itexpr.intercept)")
+#     end
+# end
 
 
 function to_str(it::IT; digits::Int=5, labels::Array{String,1}=String[])
@@ -40,12 +42,15 @@ function to_str(it::IT; digits::Int=5, labels::Array{String,1}=String[])
     c = round(it.c, digits=digits)
     b = round(it.b, digits=digits)
     
-    interaction = join(map(1:length(it.k)) do i
-        var_name = length(labels) >= i ? labels[i] : "x_$(i)"
-        "$(var_name)^$(it.k[i])"
-    end, " * ")
+    interaction = join(filter(x -> !isnothing(x), map(1:length(it.k)) do i
+        it.k[i] == 0.0 ? nothing : begin
+            var_name = length(labels) >= i ? labels[i] : "x_$(i)"
 
-    "$(w)*$(it.g)( $(b)+$(c)*($(interaction)) )"
+            "$(var_name)^$(it.k[i])"
+        end
+    end), " * ")
+
+    "$(w)*$(it.g)($(b)+$(c)*($(interaction)))"
 end
 
 
@@ -61,8 +66,8 @@ end
 
 function count_nodes(it::IT)
 
-    if it.w != 0.0
-        2 + if it.b != 0 # w * ...
+    if it.w != 0.0 # w * ...
+        2 + if it.b != 0 # w * g(b + ...)
             3 # g(b + ...)
         else
             1 #g(...)

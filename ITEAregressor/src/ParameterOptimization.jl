@@ -87,10 +87,7 @@ function _replace_parameters(
     fit_intercept=true) where {T<:Number}
     
     ITs = map(collect(1:size(itexpr.ITs, 1))) do i
-        g = itexpr.ITs[i].g
-        k = itexpr.ITs[i].k
-
-        IT(g, k, theta[3i-2], theta[3i-1], theta[3i])
+        IT(itexpr.ITs[i].g, itexpr.ITs[i].k, theta[3i-2:3i]...)
     end
 
     fit_intercept ? ITexpr(ITs, theta[end]) : ITexpr(ITs)
@@ -112,6 +109,7 @@ function ordinary_least_squares_adj(
     try
         # ones no final para ser a coluna do fit intercepto
         Xhat = if fit_intercept
+            # TODO: EVALUATE AQUI não deve considerar intercept ou coeficiente externo...
             hcat(map(it -> evaluate(it, X), itexpr.ITs)..., ones(nsamples))
         else
             hcat(map(it -> evaluate(it, X), itexpr.ITs)...)
@@ -145,85 +143,177 @@ function levenberg_marquardt_adj(
     itexpr::ITexpr, X::Array{T, 2}, y::Array{T, 1};
     maxIter=10, fit_intercept=true) where {T<:Number}
 
-    # Teste - OLS + LM ---------------------------------------------------------
-    theta = ordinary_least_squares_adj(itexpr, X, y, fit_intercept=true)
+    residual_inplace! = (out, theta) -> begin
+        #println("model\n ", F)
+        eval = zeros(size(X, 1))
 
-    # Criando valores aleatórios para os outros coeficientes não ajustados
-    p0 = rand(Uniform(-1, 1), 3*length(itexpr.ITs))
+        for i in 1:length(itexpr.ITs)
+            b, c = theta[2i-1:2i]
+            w, g, k = itexpr.ITs[i].w, itexpr.ITs[i].g, itexpr.ITs[i].k
+            
+            p_eval = prod(X .^ k', dims=2)
+            @. eval += w * g(b + c * p_eval)
+        end
+
+        out .= abs2.(y .- (fit_intercept ? eval .+ theta[end] : eval) )
+    end
+
+    p0 = if fit_intercept
+        zeros(3*size(itexpr.ITs, 1)+1) # Starting point
+    else
+        zeros(3*size(itexpr.ITs, 1))
+    end
+
+    if fit_intercept
+        p0[end] = itexpr.intercept
+    end
+
+    # Pegando os coeficientes individuais
     for i in 1:length(itexpr.ITs)
-        theta[3i-1:3i] .= p0[3i-1:3i]
+        p0[3i-2:3i] .= rand(Uniform(-100, 100), 3)
     end
     
-    # Atualizando com OLS
-    itexpr = _replace_parameters(itexpr, theta, fit_intercept=true)
-    # ----- (daqui pra baixo volta ao método original) -------------------------
-
-    model, jacobian, p0 = _create_model_and_jacobian(itexpr, fit_intercept=fit_intercept)
-
     try
-        fit = curve_fit(model, jacobian, X, y, p0, maxIter=maxIter)
+        fit = lso.optimize!(
+            lso.LeastSquaresProblem(x = p0, f! = residual_inplace!, output_length = size(X, 1), autodiff = :central),
+            lso.LevenbergMarquardt(lso.QR()))
 
-        theta = fit.param
-        
-        return theta #_replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+        return p0
     catch err
         if isa(err, DomainError) || isa(err, SingularException)
+            #rethrow(err)
             return p0
+            #return _get_p0(itexpr, fit_intercept=fit_intercept)
         else
-            rethrow(err)
+            #rethrow(err)
+            return p0
+            return _get_p0(itexpr, fit_intercept=fit_intercept)
         end
     end
 end
 
 
-function gradient_descent_adj(
+function levenberg_marquardt_ordinary_least_squares_adj(
     itexpr::ITexpr, X::Array{T, 2}, y::Array{T, 1};
-    maxIter=100, alpha=0.01, tolerance=0.0002, fit_intercept=true) where {T<:Number}
+    iterations=10, fit_intercept=true) where {T<:Number}
 
-    model, jacobian, p0 = _create_model_and_jacobian(itexpr, fit_intercept=fit_intercept)
+    # ajustar cada termo individualmente (com intercepto), depois ajustar só 
+    # os coeficientes com o LM
+    p0 = ones(3*size(itexpr.ITs, 1)+(fit_intercept ? 1 : 0))
 
-    iteration = 0
-
-    prev_avg_MAE = try
-        mean(abs.(model(X, p0) - y))
-    catch DomainError
-        Inf
+    if fit_intercept
+        p0[end] = 0.0
     end
-    
-    while iteration*size(X, 1) < maxIter
 
-        for i in collect(1:size(X, 1))
-            try
-                # Erro é calculado individualmente para cada observação
-                error = model(X[i:i, :], p0)[1] - y[i]
-                gradient_wrt_coeffs = jacobian(X[i:i, :], p0)[1, :]
-    
-                # Vamos na direção oposta do gradiente
-                p0 .-= (alpha .* gradient_wrt_coeffs .* error)
-            catch err
-                if isa(err, DomainError)
-                    continue
-                else
-                    rethrow(err)
-                end
-            end
+    for i in 1:length(itexpr.ITs)
+
+        itexpr_aux = ITexpr([itexpr.ITs[i]])
+
+        residual_inplace! = (out, theta) -> begin
+            eval = zeros(size(X, 1))
+
+            b, c = theta[1:2]
+            w, g, k = itexpr_aux.ITs[1].w, itexpr_aux.ITs[1].g, itexpr_aux.ITs[1].k
+            
+            p_eval = prod(X .^ k', dims=2)
+            @. eval += w * g(b + c * p_eval)
+
+            # Residual sum
+            out .= abs2.(y .- (fit_intercept ? eval .+ theta[end] : eval) )
         end
 
         try
-            new_avg_MAE = mean(abs.(model(X, p0) - y))
+            # b, c and local intercept
+            p0_aux = rand(Uniform(-100, 100), 3)
 
-            if abs(new_avg_MAE-prev_avg_MAE) <= tolerance
-                iteration = maxIter
+            fit = lso.optimize!(
+                lso.LeastSquaresProblem(x = p0_aux, f! = residual_inplace!,
+                    output_length = size(X, 1), autodiff = :central),
+                lso.LevenbergMarquardt(lso.QR()), iterations=iterations)
+
+            # ajuste é feito inplace. Queremos os coeficientes sem o intercepto
+            p0[3i-1:3i] .= p0_aux[1:2]
+        catch err
+            if isa(err, DomainError) || isa(err, SingularException)
+                #rethrow(err)
+                continue
             else
-                prev_avg_MAE = new_avg_MAE
-                iteration += 1
+                #rethrow(err) #TODO: lançar o erro aqui
+                continue
             end
-        catch DomainError
-            iteration += 1
         end
     end
 
-    return p0 #_replace_parameters(itexpr, p0, fit_intercept=fit_intercept)
+    try
+        itexpr = _replace_parameters(itexpr, p0, fit_intercept=fit_intercept)
+
+        theta2 = ordinary_least_squares_adj(itexpr, X, y, fit_intercept=fit_intercept)
+
+        return theta2
+    catch err
+        if isa(err, DomainError) || isa(err, SingularException)
+            #rethrow(err)
+            return _get_p0(itexpr, fit_intercept=fit_intercept)
+        else
+            #rethrow(err)
+            return _get_p0(itexpr, fit_intercept=fit_intercept)
+        end
+    end
+end
+
+
+function ordinary_least_squares_levenberg_marquardt_adj(
+    itexpr::ITexpr, X::Array{T, 2}, y::Array{T, 1};
+    maxIter=10, fit_intercept=true) where {T<:Number}
+
+    # https://discourse.julialang.org/t/optimization-and-arbitrary-precision/21801
+    
+    theta = ordinary_least_squares_adj(itexpr, X, y, fit_intercept=fit_intercept)
+
+    # Atualizando com OLS
+    itexpr = _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+
+    residual_inplace! = (out, theta) -> begin
+        #println("model\n ", F)
+        eval = zeros(size(X, 1))
+
+        for i in 1:length(itexpr.ITs)
+            b, c = theta[2i-1:2i]
+            w, g, k = itexpr.ITs[i].w, itexpr.ITs[i].g, itexpr.ITs[i].k
+            
+            p_eval = prod(X .^ k', dims=2)
+            @. eval += w * g(b + c * p_eval)
+        end
+
+        # Residual sum
+        out .= abs2.(y .- (fit_intercept ? eval .+ theta[end] : eval) )
+    end
+
+    # TODO: melhorar esse try catch para funcionar caso um dos dois métodos ainda falhe
+    try
+        # Criando valores aleatórios para os outros coeficientes não ajustados
+        for i in 1:length(itexpr.ITs)
+            theta[3i-1:3i] .= rand(Uniform(-1.0, 1.0), 2)
+        end
+    
+        fit = lso.optimize!(
+            lso.LeastSquaresProblem(x = theta, f! = residual_inplace!, output_length = size(X, 1), autodiff = :central),
+            lso.LevenbergMarquardt(lso.QR()))
+
+        return theta 
+    catch err
+        if isa(err, DomainError) || isa(err, SingularException)
+            #println(err)
+            #rethrow(err)
+            return theta
+            #return _get_p0(itexpr, fit_intercept=fit_intercept)
+        else
+            #println(err)
+            return theta
+            #rethrow(err)
+            #return _get_p0(itexpr, fit_intercept=fit_intercept)
+        end
+    end
 end
 
 
@@ -234,7 +324,7 @@ const _adj_memoization = LRU{UInt64, Array{Float64, 1}}(maxsize = ITEA_CACHE_SIZ
 function free_params_adj(itexpr, X, y;
     method::Union{String, Nothing}="gradient_descent_adj", fit_intercept=true)
 
-    # Removendo termos que dão nan/inf
+    # Removendo termos que dão nan/inf na predição
     remove = zeros(length(itexpr.ITs))
     for i in 1:length(itexpr.ITs)
         try
@@ -260,7 +350,9 @@ function free_params_adj(itexpr, X, y;
             eval(Symbol(method))(itexpr, X, y, fit_intercept=fit_intercept)
         end
 
-        _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+        expr = _replace_parameters(itexpr, theta, fit_intercept=fit_intercept)
+        #println(expr)
+        expr
     end
 end
 

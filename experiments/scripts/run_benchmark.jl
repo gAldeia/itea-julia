@@ -8,16 +8,21 @@ using Underscores #macro @_ for passing closures to functions
 
 import ITEAregressor: ITEA, RMSE, NMSE, MAE, to_str, count_nodes
 
-
-function _fit_ITEA(df_name, fold, popsize, terms_bounds, expo_bounds, gens, adjust_method)
+"""Auxiliary function that takes as arguments the ITEA configuration
+and performs the fit. Returns the elapsed time and the best solution found.
+"""
+function _fit_ITEA(
+    df_name, fold, popsize, terms_bounds, expo_bounds, gens, adjust_method)
+    
     df_train = CSV.File("../datasets/$(df_name)-train-$(fold).dat") |> DataFrame
     
-    train_X, train_y = Matrix{Float64}(df_train[:, 1:end-1]), Vector{Float64}(df_train[:, end])
+    train_X = Matrix{Float64}(df_train[:, 1:end-1]),
+    train_y = Vector{Float64}(df_train[:, end])
 
     exec_time = @elapsed (bestsol = ITEA(
         train_X, train_y,
-        ["identity","sin","cos","tan","sqrtabs","log","exp","abs"],
-        max(1, size(train_X, 2)),
+        ["identity", "sin", "cos", "tan", "log", "exp", "sqrt"],
+        2, #max(1, size(train_X, 2)),
 
         popsize       = popsize,
         terms_bounds  = terms_bounds,
@@ -32,59 +37,102 @@ function _fit_ITEA(df_name, fold, popsize, terms_bounds, expo_bounds, gens, adju
     return (exec_time, bestsol)
 end
 
+"""Auxiliary function that performs a gridsearch and returns a tuple with
+5 elements:
+(popsize, terms_bounds, expo_bounds, gens, adj_method).
 
+The gridsearch does save partial evaluations of different methods, and also 
+reports the average performance of every configuration once it is finished
+for a specific data set.
+"""
 function _gridsearch(df_name, adj_method)
 
-    # Criando as configurações (eu salvo o índice delas)
+    # set to true and create a fixed configuration if you do not intend to
+    # perform a gridsearch
+    if false
+        return (
+            250,
+            (2, 15),
+            (-3, 3),
+            400,
+            adj_method
+        )
+    end
+
+    # Setting the grid to search (order is important here, do not change!)
     popsize      = [100, 250, 500]
     terms_bounds = [(2, 10), (2, 15)]
-    expo_bounds  = [(-3, 3), (-2, 2)]
+    expo_bounds  = [(-2, 2), (-3, 3)]
 
-    configs = vec(collect(Iterators.product(popsize, terms_bounds, expo_bounds)))
+    # Partial configurations, still missing popsize (which is defined based on
+    # popsize) and adj_method
+    configs = vec(collect(
+        Iterators.product(popsize, terms_bounds, expo_bounds)))
 
+    # Adding the missing parameter values
     final_configs = []
     for i in eachindex(configs)
-        popsize = configs[i][1] # popsize é o primeiro element de configs
+        popsize = configs[i][1]
         
-        push!( # Adicionando gens e o método de ajuste
+        push!(
             final_configs, (configs[i]..., Int64(100000/popsize), adj_method))
     end
 
-    # Loading previous results
+    # Loading previous results if exists. Creates a new df otherwise
     df_gridsearch = try
         CSV.File("../results/gridsearch_$(adj_method).csv") |> DataFrame
     catch err
         if isa(err, ArgumentError) 
-            DataFrame(Dataset=String[], Fold=Int32[], Rep=Int32[], Conf=Int32[], Error=Float64[])
+            DataFrame(
+                Dataset=String[], Fold=Int32[], Rep=Int32[],
+                Exec_time=Float64[], Conf=Int32[], Error_train=Float64[],
+                Error_test=Float64[], Expr=String[])
         else
             rethrow(err)
         end
     end
 
-    # Avoid using fixed size strings for data set names
+    # Avoid using fixed size strings for data set names 
     df_gridsearch[!, :Dataset] = convert.(String, df_gridsearch[:, :Dataset])
 
-    println("Performing the gridsearch for $(size(final_configs, 1)) configs...")
+    println("Performing the gridsearch for $(size(final_configs, 1))...")
 
     for conf in eachindex(final_configs)
 
-        df_filtro = df_gridsearch[(df_gridsearch[!,:Dataset] .== df_name) .& (df_gridsearch[!,:Conf] .== conf), :]
+        # Filtering the gridsearch results to check if it is finished
+        df_filtro = df_gridsearch[
+            (df_gridsearch[!,:Dataset] .== df_name) .&
+            (df_gridsearch[!,:Conf] .== conf), :]
 
-        # Um dataset é dividido em 5 folds. Repetiremos 6x cada fold para obter
-        # 30 execuções de uma validação cruzada
+        # we have 5 folds (numbered from [0, 4]) and want to have 30 executions.
+        # we perform 6 executions for each fold. Loops here behaves as indexing
+        # starts at 0
         for fold in 0:4
-            df_test = CSV.File("../datasets/$(df_name)-test-$(fold).dat")  |> DataFrame
-            
-            test_X, test_y = Matrix{Float64}(df_test[:, 1:end-1]), Vector{Float64}(df_test[:, end])
+            df_train = CSV.File("../datasets/$(df_name)-train-$(fold).dat") |> DataFrame            
+            df_test  = CSV.File("../datasets/$(df_name)-test-$(fold).dat")  |> DataFrame
+                        
+            # Separating training and testing into X and y
+            train_X = Matrix{Float64}(df_train[:, 1:end-1])
+            train_y = Vector{Float64}(df_train[:, end])
+
+            test_X  = Matrix{Float64}(df_test[:, 1:end-1])
+            test_y  = Vector{Float64}(df_test[:, end])
 
             for rep in 0:5
-                if size(df_filtro[(df_filtro[!,:Fold] .== fold) .& (df_filtro[!,:Rep] .== rep), :], 1) == 0
+                # Checking if we can need to do this execution
+                if size(df_filtro[
+                    (df_filtro[!,:Fold] .== fold) .&
+                    (df_filtro[!,:Rep] .== rep), :], 1) == 0
 
                     println("Executing conf $(conf) dataset $(df_name) fold $(fold) rep $(rep)")
 
                     exec_time, bestsol = _fit_ITEA(df_name, fold, final_configs[conf]...)
 
-                    push!(df_gridsearch, (df_name, fold, rep, conf, RMSE(bestsol(test_X), test_y)) )
+                    # Saving the results
+                    push!(df_gridsearch,
+                        (df_name, fold, rep, exec_time, conf, 
+                        RMSE(bestsol(train_X), train_y),
+                        RMSE(bestsol(test_X), test_y), to_str(bestsol)) )
                     
                     CSV.write("../results/gridsearch_$(adj_method).csv", df_gridsearch)
                     
@@ -94,6 +142,7 @@ function _gridsearch(df_name, adj_method)
         end
     end 
     
+    # Reporting in the terminal how each configuration scored
     df = df_gridsearch[df_gridsearch[!,:Dataset] .== df_name, :]
     df = @_ groupby(df, [:Dataset, :Conf]) |> combine(__, :Error => mean => :Avg_Error)
 
@@ -105,21 +154,32 @@ end
 
 function main()
     df_names = ["airfoil", "concrete", "energyCooling", "energyHeating",
-        "geographical", "tecator", "towerData", "wineRed", "wineWhite", "yacht"]
+        "wineRed", "wineWhite", "yacht", "geographical", "tecator", "towerData"]
 
-    # rodar primeiro 1x sem salvar (julia pré compila nessas horas, pode enviesar medir tempo)
-    _fit_ITEA("yacht", 0, 10, (1, 3), (-1, 1), 10, nothing)
+    # executing a small experiment to force Julia to pre-compile the
+    # method
+    _fit_ITEA("yacht", 0, 10, (1, 3), (-1, 1), 10,
+        "levenberg_marquardt_ordinary_least_squares_adj")
 
-    for adj_method in ["gradient_descent_adj", "levenberg_marquardt_adj", "ordinary_least_squares_adj", nothing]
+    for adj_method in [
+        "levenberg_marquardt_ordinary_least_squares_adj",
+        "levenberg_marquardt_adj", 
+        "ordinary_least_squares_adj",
+        "ordinary_least_squares_levenberg_marquardt_adj",
+        nothing
+    ]
         
         df_results = try
             CSV.File("../results/results_$(adj_method).csv") |> DataFrame
         catch err
             if isa(err, ArgumentError) 
 
-                DataFrame(Dataset=String[], Fold=Int[], Rep=Int[], Time=Float64[],
-                        RMSE_test=Float64[], NMSE_test=Float64[], MAE_test=Float64[],
-                        Expr=String[], N_nodes = Int[])
+                DataFrame(
+                    Dataset=String[], Fold=Int[], Rep=Int[],
+                    Exec_time=Float64[], RMSE_train=Float64[],
+                    NMSE_train=Float64[], MAE_train=Float64[],
+                    RMSE_test=Float64[], NMSE_test=Float64[],
+                    MAE_test=Float64[], N_nodes=Int[], Expr=String[])
             else
                 rethrow(err)
             end
@@ -136,9 +196,13 @@ function main()
             df_filtro = df_results[df_results.Dataset .== df_name, :]
 
             for fold in 0:4
-                
+                df_train = CSV.File("../datasets/$(df_name)-train-$(fold).dat") |> DataFrame
                 df_test  = CSV.File("../datasets/$(df_name)-test-$(fold).dat")  |> DataFrame
                 
+                # Separating training and testing into X and y
+                train_X = Matrix{Float64}(df_train[:, 1:end-1])
+                train_y = Vector{Float64}(df_train[:, end])
+
                 test_X  = Matrix{Float64}(df_test[:, 1:end-1])
                 test_y  = Vector{Float64}(df_test[:, end])
 
@@ -150,16 +214,18 @@ function main()
 
                         exec_time, bestsol = _fit_ITEA(df_name, fold, best_config...)
 
-                        # TODO: resolver bug string is too large
-
                         push!(df_results, (
                             df_name, fold, rep, exec_time,
+
+                            RMSE(bestsol(train_X), train_y),
+                            NMSE(bestsol(train_X), train_y),
+                            MAE(bestsol(train_X), train_y),
 
                             RMSE(bestsol(test_X), test_y),
                             NMSE(bestsol(test_X), test_y),
                             MAE(bestsol(test_X), test_y),
 
-                            to_str(bestsol, digits=3), count_nodes(bestsol)
+                            count_nodes(bestsol), to_str(bestsol, digits=3)
                         ))
                         
                         CSV.write("../results/results_$(adj_method).csv", df_results)
@@ -171,6 +237,5 @@ function main()
         end
     end
 end
-
 
 main()

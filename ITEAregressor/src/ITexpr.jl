@@ -7,7 +7,7 @@ IT(x) = outer_c * g( inner_c * interaction(x, k) )
 """
 struct IT
     g :: Function
-    k :: Array{Float64, 1} # have to be float to use ^ with negative strengths.
+    k :: Array{Float16, 1} # have to be float to use ^ with negative strengths.
 
     w :: Float64 # outer scale coefficient
     b :: Float64 # inner offset
@@ -27,7 +27,7 @@ struct ITexpr
     intercept :: Float64
 
     nterms    :: Int32 # TODO: Usar nterms e nvars no código
-    nvars     :: Int32 
+    nvars     :: Int32 #TODO: não ter nvars
 
     ITexpr(ITs, intercept=0.0) = begin
         # Lista de ITs é criada (ao menos pelas funções internas da biblioteca)
@@ -68,15 +68,4 @@ end
 
 function Base.:(==)(itexpr1::ITexpr, itexpr2::ITexpr) 
     isequal(itexpr1.ITs, itexpr2.ITs) && isequal(itexpr1.nterms, itexpr2.nterms)
-end
-
-
-"""
-Alias for a list of ITexprs to match this type of list as a population
-"""
-struct ITpop
-    ITexprs :: Array{ITexpr, 1}
-    size::Int64  #TODO: renomear para length?
-
-    ITpop(ITexprs) = new(ITexprs, size(ITexprs, 1))
 end
