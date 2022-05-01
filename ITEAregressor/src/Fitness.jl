@@ -17,22 +17,22 @@ R2neg(pred, y)   = -1(1 - sum((pred .- y).^2) / sum((pred .- mean(y)).^2))
 # Methods that are not exported explicitly (memoization can contaminate 
 # user results if forgets to clean cache for different data sets)
 
-const _fitness_memoization = LRU{ITexpr, Float64}(maxsize = ITEA_CACHE_SIZE)
+const _fitness_memoization = LRU{UInt64, Float64}(maxsize = ITEA_CACHE_SIZE)
 
 
 function fitness(
     itexpr::ITexpr, X::Array{T, 2}, y::Array{T, 1}; metric::String="RMSE"
     ) where {T<:Number}
 
-    get!(_fitness_memoization, itexpr) do
+    metric_error = get!(_fitness_memoization, hash(itexpr)) do
         try
-            metric_error = eval(Symbol(metric))(evaluate(itexpr, X), y)
-            
-            isfinite(metric_error) ? metric_error : Inf
+            eval(Symbol(metric))(evaluate(itexpr, X), y)
         catch DomainError
             return Inf
         end
     end
+            
+    isfinite(metric_error) ? metric_error : Inf
 end
 
 
