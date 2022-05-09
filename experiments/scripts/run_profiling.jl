@@ -36,7 +36,7 @@ experiment = (; popsize=100, gens=100) -> bestsol = ITEA(
 
     popsize       = popsize,
     terms_bounds  = terms_bounds,
-    expo_bounds   = expo_bounds,
+    strengths_bounds   = strengths_bounds,
     gens          = gens,
     adjust_method = adjust_method,
 
