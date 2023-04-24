@@ -11,3 +11,4 @@ import ITEAregressor
     @test_throws MethodError ITEAregressor.IT(identity, [1, 2], 1.0)
     @test_throws MethodError ITEAregressor.IT(identity, [1, 2], 1.0, [1.0])
 end
+

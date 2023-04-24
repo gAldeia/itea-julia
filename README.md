@@ -2,15 +2,7 @@
 
 Julia implementation of the Interaction-Transformation Evolutionary Algorithm (ITEA) for symbolic regression, coupled with different optimization heuristics to adjust linear and non-linear coefficients in the expressions.
 
-The expressions are in the form:
-
-<img src="https://render.githubusercontent.com/render/math?math=\hat{f}(\mathbf{X}, \mathbf{g}, \mathbf{K}, \boldsymbol{\beta}, \boldsymbol{\theta}) = \beta_0 + \sum_{i=1}^{t}{\beta_i \cdot g_i(p_i(\mathbf{X}, \mathbf{K}_i, \boldsymbol{\theta}_i)}),">
-
-with <img src="https://render.githubusercontent.com/render/math?math=\boldsymbol{\theta}_i = (\theta_o, \theta_s)_i,"> being the inner offset and scalar coefficient of the _i_-th interaction (and <img src="https://render.githubusercontent.com/render/math?math=\boldsymbol{\theta} \in \mathbb{R}^{2t} = ((\theta_o, \theta_s)_1, (\theta_o, \theta_s)_2, \ldots, (\theta_o, \theta_s)_t),"> being the collection of all pairs of inner coefficients):
-
-<img src="https://render.githubusercontent.com/render/math?math=p_i(\mathbf{X}, \mathbf{K}_i, \boldsymbol{\theta}) = \theta_o + \theta_s \cdot \prod_{j=1}^{d}{X_j^{\mathbf{K}_{ij}}}.,">
-
-For example, one possible equation could be as following:
+The expressions are the linear combination of independent terms, where each term describes the application of a transformation function over the interaction of the problem variables. For example, one possible equation could be as following:
 
 <img src="https://render.githubusercontent.com/render/math?math=\text{IT}_{expr} = 0.67\cdot \left ( 26.26-1.162\cdot \frac{x_1}{x_4^2} \right ) -2.916\cdot \text{log}\left ( 1.0 +1.2\cdot x_1^2  x_5^1 \right ) -1.556\cdot \sqrt{5.0 - x_1^2 x_3^3} + 1411.0,">
 
@@ -106,7 +98,7 @@ now we can inspect the final expression and use it to predict new values:
 
 ```julia
 # Getting a string representation
-print(to_str(bestsol, digits=3)) # will held
+print(to_str(bestsol, digits=3))
 ```
 
 will held:

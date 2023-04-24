@@ -12,11 +12,11 @@ import ITEAregressor: ITEA, RMSE, NMSE, MAE, to_str, count_nodes
 and performs the fit. Returns the elapsed time and the best solution found.
 """
 function _fit_ITEA(
-    df_name, fold, popsize, terms_bounds, strengths_bounds, gens, adjust_method)
+    df_name, fold, popsize, terms_bounds, strength_bounds, gens, adjust_method)
     
     df_train = CSV.File("../datasets/$(df_name)-train-$(fold).dat") |> DataFrame
     
-    train_X = Matrix{Float64}(df_train[:, 1:end-1]),
+    train_X = Matrix{Float64}(df_train[:, 1:end-1])
     train_y = Vector{Float64}(df_train[:, end])
 
     exec_time = @elapsed (bestsol = ITEA(
@@ -26,7 +26,7 @@ function _fit_ITEA(
 
         popsize       = popsize,
         terms_bounds  = terms_bounds,
-        strengths_bounds   = strengths_bounds,
+        strength_bounds   = strength_bounds,
         gens          = gens,
         adjust_method = adjust_method,
 
@@ -39,7 +39,7 @@ end
 
 """Auxiliary function that performs a gridsearch and returns a tuple with
 5 elements:
-(popsize, terms_bounds, strengths_bounds, gens, adj_method).
+(popsize, terms_bounds, strength_bounds, gens, adj_method).
 
 The gridsearch does save partial evaluations of different methods, and also 
 reports the average performance of every configuration once it is finished
@@ -62,12 +62,12 @@ function _gridsearch(df_name, adj_method)
     # Setting the grid to search (order is important here, do not change!)
     popsize      = [100, 250, 500]
     terms_bounds = [(2, 10), (2, 15)]
-    strengths_bounds  = [(-2, 2), (-3, 3)]
+    strength_bounds  = [(-2, 2), (-3, 3)]
 
     # Partial configurations, still missing popsize (which is defined based on
     # popsize) and adj_method
     configs = vec(collect(
-        Iterators.product(popsize, terms_bounds, strengths_bounds)))
+        Iterators.product(popsize, terms_bounds, strength_bounds)))
 
     # Adding the missing parameter values
     final_configs = []
